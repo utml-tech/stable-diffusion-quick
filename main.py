@@ -5,44 +5,68 @@ from PIL import Image, PngImagePlugin, ExifTags
 import io
 import base64
 
-url = "https://53e3e566423a8d7a39.gradio.live" # "http://127.0.0.1:7860"
+from helpers.image import read_info_from_image, parse_generation_parameters
+
+from rich import print, traceback
+
+traceback.install()
+
+url = "http://127.0.0.1:7860"
 
 class Styler:
 
   # def transform(self, input, output, model, metadata):
   #   print('Transforming data from {} to {} using model {} with metadata {}'.format(input, output, model, metadata))
 
+  def info(self, template: str) -> str:
+    template = Image.open(template)
+    info, _ = read_info_from_image(template)
+    info = parse_generation_parameters(info)
+    print(info)
+
+    return info
+  
+  def options(self, model_hash: str) -> str:
+    return requests.post(url=f'{url}/sdapi/v1/options', json={"sd_model_checkpoint": model_hash}).json()
+
   def transform(self):
     input = r"files/viral-guy-with-mask.mp4"
-    template = r"files/template.jpeg"
+    template = r"files/template2.jpeg"
     output = r"files/output.mp4"
     model = "cetusmix"
 
     print(f'Transforming data from {input} to {output} using model {model} with metadata {template}')
 
     # get the metadata
-    print("getting png info")
-    template = Image.open(template)
-    exif = { ExifTags.TAGS[k]: v for k, v in template._getexif().items() if k in ExifTags.TAGS}
-    print(exif["UserComment"].decode("utf-8"))
+    info = self.info(template)
+
+    # set model and options
+    self.options(model_hash=info["Model"])
+    print("model set to " + info["Model"])
 
     # img2img
     img = base64.b64encode(Path("files/template.jpeg").read_bytes()).decode("ascii")
 
     payload = {
+        "prompt": info["Prompt"],
+        "negative_prompt": info["Negative prompt"],
+        "steps": int(info["Steps"]),
+        "sampler_name": info["Sampler"],
+        "cfg_scale": float(info["CFG scale"]),
+        "seed": int(info["Seed"]),
+        "width": 2 * int(info["Size-1"]),
+        "height": 2 * int(info["Size-2"]),
+        # "denoising_strength": info["Denoising strength"],
+        # "override_settings": {'Clip skip': info["Clip skip"], 'ENSD': info["ENSD"]},
         "init_images": [img],
-        "prompt": 'a handsome man',
-        "negative_prompt": "",
         "batch_size": 1,
-        "steps": 20,
-        "cfg_scale": 7,
         "alwayson_scripts": {
             "controlnet": {
                 "args": [
-                    {
-                        "module": "canny",
-                        "model": "control_v11p_sd15_canny [d14c016b]",
-                    },
+                    # {
+                    #     "module": "canny",
+                    #     "model": "control_v11p_sd15_canny [d14c016b]",
+                    # },
                     {
                         "module": "openpose",
                         "model": "control_v11p_sd15_openpose [cab727d4]",

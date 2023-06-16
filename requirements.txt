@@ -1,3 +1,6 @@
 fire
 requests
 pillow
+
+piexif
+rich
