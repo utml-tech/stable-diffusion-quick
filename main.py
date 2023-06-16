@@ -5,6 +5,8 @@ from PIL import Image, PngImagePlugin, ExifTags
 import io
 import base64
 
+url = "https://53e3e566423a8d7a39.gradio.live" # "http://127.0.0.1:7860"
+
 class Styler:
 
   # def transform(self, input, output, model, metadata):
@@ -96,7 +98,7 @@ class Styler:
 
     print("img2img")
 
-    response = requests.post(url='http://127.0.0.1:7860/sdapi/v1/img2img', json=payload).json()
+    response = requests.post(url=f'{url}/sdapi/v1/img2img', json=payload).json()
 
     print("response recieved")
 
@@ -105,10 +107,7 @@ class Styler:
 
     for i in response["images"]:
       image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
-
       image.save("transform.png")
-
-
     
   def test(self):
     payload = {
