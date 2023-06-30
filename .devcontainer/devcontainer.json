@@ -1,0 +1,49 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/docker-existing-dockerfile
+{
+	"name": "utml.tech SD project",
+
+	// Sets the run context to one level up instead of the .devcontainer folder.
+	"context": "..",
+
+	// Update the 'dockerFile' property if you aren't using the standard 'Dockerfile' filename.
+	"dockerFile": "Dockerfile",
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Uncomment the next line to run commands after the container is created - for example installing curl.
+	// "postCreateCommand": "",
+
+	"runArgs": [
+		"--gpus=all",
+		"--userns=host",
+		"--ipc=host",
+		"--shm-size=68719476736",
+		"--hostname=${localEnv:HOSTNAME}",
+		"--cap-add=SYS_ADMIN",
+		"--cap-add=IPC_LOCK",
+		"--security-opt=seccomp=unconfined",
+		"--network=host"
+	],
+
+	// Uncomment to use the Docker CLI from inside the container. See https://aka.ms/vscode-remote/samples/docker-from-docker.
+	"mounts": [
+		// "source=/mnt/share/pedro/files/,target=/workspaces/files/,type=bind"
+	],
+
+	// Uncomment to connect as a non-root user if you've added one. See https://aka.ms/vscode-remote/containers/non-root.
+	// "remoteUser": "pvaloi",
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-toolsai.jupyter",
+				"ms-azuretools.vscode-docker",
+				"GitHub.copilot-nightly"
+			]
+		}
+	}
+}

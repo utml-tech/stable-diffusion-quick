@@ -1,3 +1,6 @@
 fire
-requests
+opencv-python
 pillow
+piexif
+requests
+rich

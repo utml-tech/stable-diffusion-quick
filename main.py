@@ -5,65 +5,106 @@ from PIL import Image, PngImagePlugin, ExifTags
 import io
 import base64
 
-url = "https://53e3e566423a8d7a39.gradio.live" # "http://127.0.0.1:7860"
+import string
+
+from tenacity import retry, stop_after_attempt
+
+from helpers.image import read_info_from_image, parse_generation_parameters
+from helpers.video import decode_base64_image, video_to_frames, get_video_fps, frames_to_video
+
+from rich import print, traceback
+from rich.progress import track
+
+traceback.install()
+
+url = "http://127.0.0.1:7860"
 
 class Styler:
 
   # def transform(self, input, output, model, metadata):
   #   print('Transforming data from {} to {} using model {} with metadata {}'.format(input, output, model, metadata))
 
+  def info(self, template: str) -> dict[str, str | int]:
+    template = Image.open(template)
+    info, _ = read_info_from_image(template)
+    info = parse_generation_parameters(info)
+    print(info)
+
+    return info
+  
+  def options(self, model_hash: str) -> str:
+    return requests.post(url=f'{url}/sdapi/v1/options', json={"sd_model_checkpoint": model_hash}).json()
+
   def transform(self):
-    input = r"files/viral-guy-with-mask.mp4"
+    input = Path("files/viral-guy-with-mask.mp4")
     template = r"files/template.jpeg"
-    output = r"files/output.mp4"
     model = "cetusmix"
 
-    print(f'Transforming data from {input} to {output} using model {model} with metadata {template}')
+    print(f'Transforming data from {input} using model {model} with metadata {template}')
+
+    # get frames
+    frames = video_to_frames(str(input))
+    # fps = get_video_fps(str(input))
 
     # get the metadata
-    print("getting png info")
-    template = Image.open(template)
-    exif = { ExifTags.TAGS[k]: v for k, v in template._getexif().items() if k in ExifTags.TAGS}
-    print(exif["UserComment"].decode("utf-8"))
+    info = self.info(template)
 
-    # img2img
-    img = base64.b64encode(Path("files/template.jpeg").read_bytes()).decode("ascii")
+    # set model and options
+    self.options(model_hash=info["Model"])
+    print("model set to " + info["Model"])
 
-    payload = {
-        "init_images": [img],
-        "prompt": 'a handsome man',
-        "negative_prompt": "",
-        "batch_size": 1,
-        "steps": 20,
-        "cfg_scale": 7,
-        "alwayson_scripts": {
-            "controlnet": {
-                "args": [
-                    {
-                        "module": "canny",
-                        "model": "control_v11p_sd15_canny [d14c016b]",
-                    },
-                    {
-                        "module": "openpose",
-                        "model": "control_v11p_sd15_openpose [cab727d4]",
-                    }
-                ]
-            }
-        }
-    }
+    output_path = input.parent / input.stem / "frames"
+    output_path.mkdir(parents=True, exist_ok=True)
+    existing_frames = list(output_path.glob("*.jpeg"))
+    start = len(existing_frames)
 
-    print("img2img")
+    print(f"Generating {len(frames)} frames from index {start}")
+    for i, frame in enumerate(track(frames[start:])):
+      output_frame = self.img2img(frame, info)
+      decode_base64_image(output_frame).save(output_path / f"{i}.jpeg")
 
-    response = requests.post(url=f'{url}/sdapi/v1/img2img', json=payload).json()
+    # print("Writing video to file")
+    # frames_to_video(output_frames, output, fps=fps)
 
-    print("response recieved")
+  @retry(stop=stop_after_attempt(2))
+  def img2img(self, img: str, info):
+      payload = {
+          "prompt": info["Prompt"],
+          "negative_prompt": info["Negative prompt"],
+          "steps": int(info["Steps"]),
+          "sampler_name": info["Sampler"],
+          "cfg_scale": float(info["CFG scale"]),
+          "seed": int(info["Seed"]),
+          "width": 2 * int(info["Size-1"]),
+          "height": 2 * int(info["Size-2"]),
+          # "denoising_strength": info["Denoising strength"],
+          # "override_settings": {'Clip skip': info["Clip skip"], 'ENSD': info["ENSD"]},
+          "init_images": [img],
+          "batch_size": 1,
+          "alwayson_scripts": {
+              "controlnet": {
+                  "args": [
+                      {
+                          "module": "canny",
+                          "model": "control_v11p_sd15_canny [d14c016b]",
+                      },
+                      {
+                          "module": "openpose",
+                          "model": "control_v11p_sd15_openpose [cab727d4]",
+                      }
+                  ]
+              }
+          }
+      }
+      response = requests.post(url=f'{url}/sdapi/v1/img2img', json=payload, timeout=60).json()
 
-    if "images" not in response:
-      print(response)
+      if "images" not in response:
+        print(response)
 
-    for i, img in enumerate(response["images"]):
-      image = Image.open(io.BytesIO(base64.b64decode(img.split(",",1)[0])))
-      image.save(f"transform-{i}.png")
+      return response["images"][0]
+
+  def base64_encode(self, filepath: str) -> str:
+      return base64.b64encode(Path(filepath).read_bytes()).decode("ascii")
 
   def test_controlnet(self):
     # Read Image in RGB order
