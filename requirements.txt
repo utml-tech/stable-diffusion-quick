@@ -4,3 +4,10 @@ pillow
 piexif
 requests
 rich
+diffusers
+transformers
+xformers
+accelerate
+opencv-contrib-python
+controlnet_aux
+matplotlib
