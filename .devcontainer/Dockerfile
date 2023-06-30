@@ -47,7 +47,7 @@ RUN apt-get clean
 
 RUN git lfs install
 
-RUN python -m pip install -U pip
+RUN python3 -m pip install -U pip
 
 ADD requirements.txt .
-RUN python -m pip install -r requirements.txt
+RUN python3 -m pip install -r requirements.txt
