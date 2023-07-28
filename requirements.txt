@@ -13,3 +13,5 @@ controlnet_aux
 matplotlib
 ipykernel
 mediapipe
+moviepy
+more-itertools

@@ -7,8 +7,12 @@ from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCM
 from controlnet_aux import OpenposeDetector
 import torch
 import fire
-from rich.progress import Progress
+from rich.progress import Progress, track
 import logging
+
+from tqdm import tqdm
+
+from helpers.video import VideoProcessor
 
 
 class VideoConverter:
@@ -16,7 +20,6 @@ class VideoConverter:
     def __init__(self):
         logging.basicConfig(level=logging.INFO)
         logging.info('Initializing VideoConverter...')
-
         self.generator = torch.Generator(device="cuda").manual_seed(2)
 
         # Initialize necessary objects like ControlNet models and pipeline
@@ -49,25 +52,6 @@ class VideoConverter:
         img = img[:, :, None]
         img = np.concatenate([img, img, img], axis=2)
         return Image.fromarray(img)
-
-    def convert_frame(self, frame, prompt):
-        # Convert the frame to a PIL image
-        frame_image = Image.fromarray(frame)
-        # Generate pose and canny images
-        # pose_image = self.get_pose(frame_image)
-        canny_image = self.get_canny(frame_image)
-        # Generate the output image using the pipeline
-
-        output = self.pipe(
-            prompt,
-            image=[canny_image],
-            negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
-            num_inference_steps=30,
-            generator=[self.generator],
-        )
-        # Convert the output image back to a frame
-        output_frame = np.array(output.images[0])
-        return output_frame
     
     def _process_batch(self, frame_batch, prompt):
         if not frame_batch:
@@ -82,56 +66,20 @@ class VideoConverter:
             [prompt]*len(frame_batch),  # Repeat the prompt for each frame in the batch
             image=canny_image_batch,  # Pass canny images to the pipeline
             negative_prompt=["monochrome, lowres, bad anatomy, worst quality, low quality"]*len(frame_batch),
-            num_inference_steps=30,
-            generator=[self.generator]*len(frame_batch),
+            num_inference_steps=5,
+            generator=self.generator,
         )
         # Convert the output images back to frames
-        output_frame_batch = [np.array(output_image) for output_image in output_batch.images]
-        return output_frame_batch
-
-    def _write_batch(self, out, converted_frame_batch, task, progress):
-        for converted_frame in converted_frame_batch:
-            out.write(converted_frame)
-            progress.update(task, advance=1)
+        return [np.array(output_image) for output_image in output_batch.images]
 
     def convert(self, input_path: str, output_path: str, prompt: str):
-        # Delete the output file if it exists
-        if os.path.exists(output_path):
-            os.remove(output_path)
+        with VideoProcessor(input_path, output_path, batch_size=16) as video:
+            for frames in tqdm(video, total=len(video)):
+                converted_frames = self._process_batch(frames, prompt)
+                video.write(converted_frames)
 
-        cap = cv2.VideoCapture(input_path)
-        # Get video properties (fps, width, height) to write the output video
-
-        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), 24, (640, 480))
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        batch_size = 16
-        frame_batch = []
-
-        with Progress() as progress:
-            task = progress.add_task("[cyan]Processing...", total=total_frames)
-
-            while not progress.finished:
-                ret, frame = cap.read()
-                if not ret:
-                    continue  # Skip the frame if it was not read correctly
-
-                frame_batch.append(frame)
-                if len(frame_batch) == batch_size:
-                    converted_frame_batch = frame_batch # self._process_batch(frame_batch, prompt)
-                    self._write_batch(out, converted_frame_batch, task, progress)
-                    frame_batch = []  # Reset the batch
-                    break
-
-            # Process remaining frames in the batch if any
-            if frame_batch: 
-                converted_frame_batch = frame_batch # self._process_batch(frame_batch, prompt)
-                self._write_batch(out, converted_frame_batch, task, progress)
-
-        cap.release()
-        out.release()
-
-
+# example usage:
+# python3 cli.py convert viral-guy-with-mask.mp4 test.mp4 "mr potato head, best quality, extremely detailed"
 if __name__ == "__main__":
     fire.Fire(VideoConverter)
+    
