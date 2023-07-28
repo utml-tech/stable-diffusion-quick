@@ -29,7 +29,8 @@
 
 	// Uncomment to use the Docker CLI from inside the container. See https://aka.ms/vscode-remote/samples/docker-from-docker.
 	"mounts": [
-		// "source=/mnt/share/pedro/files/,target=/workspaces/files/,type=bind"
+		"source=/mnt/share/pedro/files/,target=/workspaces/.cache/,type=bind",
+		"source=/mnt/share/pedro/files/,target=/workspaces/stable-diffusion-quick/files/,type=bind"
 	],
 
 	// Uncomment to connect as a non-root user if you've added one. See https://aka.ms/vscode-remote/containers/non-root.

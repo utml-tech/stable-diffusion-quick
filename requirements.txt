@@ -11,3 +11,5 @@ accelerate
 opencv-contrib-python
 controlnet_aux
 matplotlib
+ipykernel
+mediapipe
