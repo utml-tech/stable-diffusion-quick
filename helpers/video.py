@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import math
-from typing import List
+from typing import Any, Iterator, List, Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 from moviepy.editor import VideoFileClip
@@ -13,33 +15,37 @@ class VideoProcessor:
     output_path: str
     batch_size: int = 16
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.clip = None
         self.writer = None
         self.current_frame = 0
         self.audio_file = NamedTemporaryFile(suffix=".mp3", delete=True)
 
-    def __enter__(self):
+    def __enter__(self) -> VideoProcessor:
         self.clip = VideoFileClip(self.input_path)
-        if self.clip.audio:  # If the original video has audio
-            # Save the original audio to a temporary mp3 file
-            self.clip.audio.write_audiofile(self.audio_file.name)
-        self.writer = FFMPEG_VideoWriter(self.output_path, self.clip.size, self.clip.fps, audiofile=self.audio_file.name)
+        self.writer = FFMPEG_VideoWriter(self.output_path, self.clip.size, self.clip.fps, audiofile=self.write_audiofile(self.clip, self.audio_file.name))
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type: type | None, value: Exception | None, traceback: Any) -> None:
         if self.writer is not None:
             self.writer.close()
 
         if self.clip is not None:
             self.clip.close()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return math.ceil(self.clip.duration * self.clip.fps / self.batch_size)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[list[np.ndarray]]:
         yield from more_itertools.batched(self.clip.iter_frames(), self.batch_size)
 
-    def write(self, frames: List[np.ndarray]):
+    def write(self, frames: np.ndarray) -> None:
         for frame in frames:
             self.writer.write_frame(frame)
+
+    @staticmethod
+    def write_audiofile(clip: VideoFileClip, filepath: str) -> str:
+        if clip.audio:  # If the original video has audio
+            # Save the original audio to a temporary mp3 file
+            clip.audio.write_audiofile(filepath)
+        return filepath
