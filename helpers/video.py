@@ -15,13 +15,10 @@ class VideoProcessor:
     output_path: str
     batch_size: int = 16
 
-    def __post_init__(self) -> None:
-        self.clip = None
-        self.writer = None
-        self.current_frame = 0
-        self.audio_file = NamedTemporaryFile(suffix=".mp3", delete=True)
-
     def __enter__(self) -> VideoProcessor:
+        self.audio_file = NamedTemporaryFile(suffix=".mp3", delete=True)
+        self.current_frame = 0
+
         self.clip = VideoFileClip(self.input_path)
         self.writer = FFMPEG_VideoWriter(self.output_path, self.clip.size, self.clip.fps, audiofile=self.write_audiofile(self.clip, self.audio_file.name))
         return self
