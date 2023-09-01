@@ -30,6 +30,18 @@ def correct_offset(images: torch.Tensor, offset: int = 1) -> torch.Tensor:
         corrected_images.append(corrected_img)
     return torch.stack(corrected_images)
 
+def to_rgb_cpu(images: torch.Tensor) -> torch.Tensor:
+    return images.mul_(255).permute(0, 2, 3, 1).to(torch.uint8).cpu().numpy()
+
+def to_rgb(images: np.ndarray) -> np.ndarray:
+    # Multiply by 255
+    images = images * 255
+    # Ensure the datatype is uint8
+    images = images.astype(np.uint8)
+    # Move channels to the last dimension
+    images = np.transpose(images, (0, 2, 3, 1))
+    return images
+
 class Commands:
     dtype = torch.float16
 
@@ -46,9 +58,9 @@ class Commands:
         # Initialize necessary objects like ControlNet models and pipeline
         logging.info('Loading ControlNet models...')
         self.controlnets = [
-            ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=self.dtype),
-            ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth", torch_dtype=self.dtype),
-            ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=self.dtype),
+            ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=self.dtype)
+            # ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth", torch_dtype=self.dtype),
+            # ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=self.dtype),
         ]
 
         # logging.info('Initializing pipeline...')
@@ -69,7 +81,9 @@ class Commands:
         if not frame_batch:
             return []
         
-        n = len(frame_batch)
+        img = frame_batch[0]
+
+        # return frame_batch
 
         # Convert the frame batch to tensors
         # input_batch = torch.from_numpy(np.stack(frame_batch)).to(self.device, self.dtype).div(255).permute(0, 3, 1, 2)
@@ -78,31 +92,33 @@ class Commands:
         # t = resize_to_fit(input_batch)
         # t_canny = kornia.filters.canny(t, hysteresis=False)[0].expand_as(t)
         # t.mul_(255).permute(0, 2, 3, 1).to(torch.uint8).cpu().numpy()
-        
-        t_canny = self.canny(frame_batch[0])[np.newaxis, ...]
-        t_depth = self.depth(frame_batch[0])[np.newaxis, ...]
-        t_pose = np.array(self.openpose(frame_batch[0]))[np.newaxis, ...]
+
+        t_canny = self.canny(img)
+        # t_depth = self.depth(img)[np.newaxis, ...]
+        # t_pose = np.array(self.openpose(img))[np.newaxis, ...]
+
+        t = torch.from_numpy(t_canny).unsqueeze_(0).div_(255).movedim(-1, 0)
+        # return TF.resize(t, size=img.shape[:-1], antialias=False).movedim(0, -1).numpy()
 
         t = self.pipe(
-            [prompt]*n,  # Repeat the prompt for each frame in the batch
-            negative_prompt=[neg_prompt]*n,
-            image=[t_canny,t_depth,t_pose],
+            prompt,  # Repeat the prompt for each frame in the batch
+            negative_prompt=neg_prompt,
+            image=[t],
             num_inference_steps=5,
-            generator=[self.generator]*n,
+            generator=self.generator,
             output_type="pt"
         ).images
 
-        breakpoint()
-
-        t = TF.resize(t, size=input_batch.shape[-2:])
-
-        return t.mul_(255).permute(0, 2, 3, 1).to(torch.uint8).cpu().numpy()
+        return TF.resize(t, size=img.shape[:-1], antialias=True).movedim(1, -1).cpu().numpy()
     
     def convert(self, input_path: str, output_path: str, prompt: str) -> None:
         with VideoProcessor(input_path, output_path, batch_size=1) as video:
-            for frames in track(video, total=len(video)):
+            for i, frames in enumerate(video):
                 converted_frames = self._process_frames(frames, prompt)
                 video.write(converted_frames)
+
+                if i > 10:
+                    break
 
 # example usage:
 # python3 cli.py convert viral-guy-with-mask.mp4 test.mp4 "mr potato head, best quality, extremely detailed"
