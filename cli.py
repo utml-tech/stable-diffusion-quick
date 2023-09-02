@@ -81,6 +81,8 @@ class Commands:
     def _process_frames(self, frame_batch: list[np.ndarray], prompt: str, neg_prompt: str = "monochrome, lowres, bad anatomy, worst quality, low quality") -> np.ndarray:
         if not frame_batch:
             return []
+        
+        H, W, C = frame_batch[0].shape
 
         t = np.stack(frame_batch)
         t = torch.from_numpy(t)
@@ -90,17 +92,19 @@ class Commands:
         t = t.permute(0, 3, 1, 2)
         t = resize_to_fit(t)
 
-        # img = t[0].mul(255).movedim(0, -1).byte().cpu().numpy()
+        img = t[0].mul(255).movedim(0, -1).byte().cpu().numpy()
+
+        t_canny = kornia.filters.canny(t, hysteresis=False)[0].expand_as(t)
+
         # t_depth = self.depth(img)
         # t_depth = torch.from_numpy(t_depth).to(self.device, self.dtype).movedim(-1, 0).unsqueeze_(0)
+        # t_depth = TF.resize(t_depth, size=t_canny.shape[-2:], antialias=True)
 
         # t_pose = np.array(self.openpose(img))
         # t_pose = torch.from_numpy(t_pose).to(self.device, self.dtype).movedim(-1, 0).unsqueeze_(0)
+        # t_pose = TF.resize(t_pose, size=t_canny.shape[-2:], antialias=True)
 
-        t_canny = kornia.filters.canny(t, hysteresis=False)[0].expand_as(t)
-        # t_canny = TF.resize(t_canny, size=t_depth.shape[-2:], antialias=True)
-
-        control_images = [t_canny]  # , t_depth, t_pose
+        control_images = [t_canny]
 
         # assert t_canny.shape == t_depth.shape == t_pose.shape, "Shapes of inputs must be equal"
 
@@ -109,12 +113,12 @@ class Commands:
             [prompt] * n,  # Repeat the prompt for each frame in the batch
             negative_prompt=[neg_prompt] * n,
             image=control_images,
-            num_inference_steps=5,
+            num_inference_steps=100,
             generator=self.generator,
             output_type="pt"
         ).images
 
-        out = TF.resize(out, size=t.shape[-2:], antialias=True)
+        out = TF.resize(out, size=(H, W), antialias=True)
         out = out.mul(255)
         out = out.permute(0, 2, 3, 1)
         out = out.to(torch.uint8)
@@ -123,13 +127,10 @@ class Commands:
         return out
     
     def convert(self, input_path: str, output_path: str, prompt: str) -> None:
-        with VideoProcessor(input_path, output_path, batch_size=1) as video:
-            for i, frames in enumerate(video):
+        with VideoProcessor(input_path, output_path, batch_size=24) as video:
+            for i, frames in enumerate(track(video, total=len(video))):
                 converted_frames = self._process_frames(frames, prompt)
                 video.write(converted_frames)
-                
-                if i > 5:
-                    break
 
 # example usage:
 # python3 cli.py convert viral-guy-with-mask.mp4 test.mp4 "mr potato head, best quality, extremely detailed"
